@@ -1,6 +1,6 @@
 [package]
 name = "leakguard"
-version = "0.5.4"
+version = "0.5.5"
 edition = "2024"
 description = "leakguard — fast secret scanner for your codebase"
 
@@ -26,6 +26,7 @@ serde_json = "1.0"
 colored = "3.1.1"
 anyhow = "1.0"
 toml = "1.0.3"
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3.10"

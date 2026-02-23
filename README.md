@@ -102,18 +102,49 @@ leakguard init-config
 Use leakguard as a library, for example before sending text to an LLM:
 
 ```python
-from leakguard import scan_text
+from leakguard import scan_text, scan_text_dict, replace_text
 
 findings = scan_text("My API key is sk-proj-abc123xyz...")
 for f in findings:
-    print(f.rule_id, f.severity, f.secret)
+    print(f.rule_id, f.severity, f.secret, f.secret_hash)
 
 # Disable specific rules for this call
 findings = scan_text("...", disable_rules=["http-insecure-url"])
+
+# Optional replacer for secret output
+findings = scan_text("...", replace_secret_with="[MASKED]")
+
+# Directly sanitize text before sending it to an LLM
+safe_text, replaced_any = replace_text(
+    "My API key is sk-proj-abc123xyz...",
+    replacement="[MASKED]"
+)
+if replaced_any:
+    print("Secrets were replaced before LLM call")
 ```
 
 Finding fields:
-`rule_id`, `description`, `severity`, `line_number`, `line`, `secret`, `tags`
+`rule_id`, `description`, `severity`, `line_number`, `line`, `secret`, `secret_hash`, `tags`
+
+### Pydantic (dict-ready)
+
+```python
+from pydantic import BaseModel
+from leakguard import scan_text_dict
+
+class Finding(BaseModel):
+    rule_id: str
+    description: str
+    severity: str
+    line_number: int
+    line: str
+    secret: str
+    secret_hash: str
+    tags: list[str]
+
+rows = scan_text_dict("My API key is sk-proj-abc123xyz...")
+findings = [Finding.model_validate(row) for row in rows]
+```
 
 ## Configuration
 

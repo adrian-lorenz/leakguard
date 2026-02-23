@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use regex::Regex;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::path::Path;
 use walkdir::WalkDir;
@@ -21,6 +22,7 @@ pub struct Finding {
     pub line_number: usize,
     pub line: String,
     pub secret: String,
+    pub secret_hash: String,
     pub tags: Vec<String>,
 }
 
@@ -82,12 +84,7 @@ impl Scanner {
             for (rule, regex) in &self.rules {
                 for caps in regex.captures_iter(line) {
                     let secret = caps.get(rule.secret_group).map(|m| m.as_str().to_string()).unwrap_or_default();
-                    if secret.is_empty() { continue; }
-                    // Skip template variables: {VAR}, ${VAR}, %(var)s
-                    if secret.contains('{') || secret.contains("%(") || secret.contains('$') { continue; }
-                    // Skip variable/property references on RHS (e.g. settings.DB_PASSWORD, config.key)
-                    if is_var_ref(&secret) { continue; }
-                    if rule.id == "http-insecure-url" && (secret.contains("localhost") || secret.contains("127.0.") || secret.contains("0.0.0.0")) { continue; }
+                    if !is_valid_secret_match(rule, &secret) { continue; }
                     findings.push(Finding {
                         rule_id: rule.id.to_string(),
                         description: rule.description.to_string(),
@@ -96,12 +93,71 @@ impl Scanner {
                         line_number: ln + 1,
                         line: truncate_line(line.trim()),
                         secret: redact_secret(&secret),
+                        secret_hash: sha256_hex(&secret),
                         tags: rule.tags.iter().map(|t| t.to_string()).collect(),
                     });
                 }
             }
         }
         findings
+    }
+
+    pub fn replace_text(&self, text: &str, replacement: &str) -> String {
+        self.replace_text_with_stats(text, replacement).0
+    }
+
+    pub fn replace_text_with_stats(&self, text: &str, replacement: &str) -> (String, usize) {
+        let mut out = String::with_capacity(text.len());
+        let mut replaced_total = 0usize;
+        for chunk in text.split_inclusive('\n') {
+            let (line, newline) = match chunk.strip_suffix('\n') {
+                Some(line_wo_nl) => (line_wo_nl, "\n"),
+                None => (chunk, ""),
+            };
+            let (replaced, count) = self.replace_line_secrets(line, replacement);
+            replaced_total += count;
+            out.push_str(&replaced);
+            out.push_str(newline);
+        }
+        (out, replaced_total)
+    }
+
+    fn replace_line_secrets(&self, line: &str, replacement: &str) -> (String, usize) {
+        if SUPPRESS_MARKERS.iter().any(|&m| line.contains(m)) {
+            return (line.to_string(), 0);
+        }
+
+        let mut spans: Vec<(usize, usize)> = Vec::new();
+        for (rule, regex) in &self.rules {
+            for caps in regex.captures_iter(line) {
+                let Some(m) = caps.get(rule.secret_group) else { continue; };
+                if !is_valid_secret_match(rule, m.as_str()) { continue; }
+                spans.push((m.start(), m.end()));
+            }
+        }
+
+        if spans.is_empty() {
+            return (line.to_string(), 0);
+        }
+
+        spans.sort_by_key(|(s, e)| (*s, *e));
+        let mut merged: Vec<(usize, usize)> = Vec::with_capacity(spans.len());
+        for (start, end) in spans {
+            if let Some((_, last_end)) = merged.last_mut() {
+                if start <= *last_end {
+                    *last_end = (*last_end).max(end);
+                    continue;
+                }
+            }
+            merged.push((start, end));
+        }
+
+        let mut out = line.to_string();
+        let replaced_count = merged.len();
+        for (start, end) in merged.iter().copied().rev() {
+            out.replace_range(start..end, replacement);
+        }
+        (out, replaced_count)
     }
 
     pub fn scan_file(&self, path: &Path) -> Result<(Vec<Finding>, ScanStats)> {
@@ -154,6 +210,26 @@ fn is_var_ref(s: &str) -> bool {
         && val.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.')
 }
 
+fn is_valid_secret_match(rule: &Rule, secret: &str) -> bool {
+    if secret.is_empty() {
+        return false;
+    }
+    // Skip template variables: {VAR}, ${VAR}, %(var)s
+    if secret.contains('{') || secret.contains("%(") || secret.contains('$') {
+        return false;
+    }
+    // Skip variable/property references on RHS (e.g. settings.DB_PASSWORD, config.key)
+    if is_var_ref(secret) {
+        return false;
+    }
+    if rule.id == "http-insecure-url"
+        && (secret.contains("localhost") || secret.contains("127.0.") || secret.contains("0.0.0.0"))
+    {
+        return false;
+    }
+    true
+}
+
 fn truncate_line(s: &str) -> String {
     let mut chars = s.chars();
     let head: String = chars.by_ref().take(200).collect();
@@ -165,6 +241,13 @@ fn redact_secret(s: &str) -> String {
     if len <= 8 { return "*".repeat(len); }
     let v = len.min(4);
     format!("{}...[REDACTED]...{}", &s[..v], &s[len-v..])
+}
+
+fn sha256_hex(s: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(s.as_bytes());
+    let out = hasher.finalize();
+    format!("{out:x}")
 }
 
 #[cfg(test)]
@@ -193,6 +276,15 @@ mod tests {
         assert!(r.starts_with("AKIA"));
         assert!(r.ends_with("MPLE"));
         assert!(r.contains("...[REDACTED]..."));
+    }
+
+    #[test]
+    fn sha256_is_stable_hex() {
+        let a = sha256_hex("secret-value");
+        let b = sha256_hex("secret-value");
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 64);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     // ── is_allowed_path ──────────────────────────────────────────────────────
@@ -270,6 +362,34 @@ extensions = ["rs"]
         writeln!(f, "aws_key = AKIAIOSFODNN7EXAMPLE1234  # leakguard-ignore").unwrap();
         let findings = scanner.scan_file(f.path()).unwrap().0;
         assert!(findings.is_empty(), "# leakguard-ignore should suppress the finding");
+    }
+
+    #[test]
+    fn replace_text_replaces_detected_secret_values() {
+        let scanner = default_scanner();
+        let input = "aws_key = AKIAIOSFODNN7EXAMPLE\nkeep = 1\n";
+        let out = scanner.replace_text(input, "[MASKED]");
+        assert!(out.contains("aws_key = [MASKED]"));
+        assert!(out.contains("keep = 1"));
+        assert!(!out.contains("AKIAIOSFODNN7EXAMPLE"));
+    }
+
+    #[test]
+    fn replace_text_respects_suppress_markers() {
+        let scanner = default_scanner();
+        let input = "aws_key = AKIAIOSFODNN7EXAMPLE  # leakguard-ignore\n";
+        let out = scanner.replace_text(input, "[MASKED]");
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn replace_text_with_stats_reports_replacement_count() {
+        let scanner = default_scanner();
+        let input = "a=AKIAIOSFODNN7EXAMPLE\nb=AKIAIOSFODNN7EXAMPLE\n";
+        let (out, count) = scanner.replace_text_with_stats(input, "[MASKED]");
+        assert_eq!(count, 2);
+        assert!(out.contains("[MASKED]"));
+        assert!(!out.contains("AKIAIOSFODNN7EXAMPLE"));
     }
 
     #[test]

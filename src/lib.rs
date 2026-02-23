@@ -167,6 +167,7 @@ fn run_main_inner(args: impl IntoIterator<Item = String>) -> anyhow::Result<i32>
 #[cfg(feature = "extension-module")]
 mod python {
     use pyo3::prelude::*;
+    use pyo3::types::PyDict;
 
     use crate::config::Config;
     use crate::rules::builtin_rules;
@@ -181,6 +182,7 @@ mod python {
         pub line_number: usize,
         pub line: String,
         pub secret: String,
+        pub secret_hash: String,
         pub tags: Vec<String>,
     }
 
@@ -189,9 +191,14 @@ mod python {
     /// Arguments:
     ///   text: The text to scan for secrets.
     ///   disable_rules: Optional list of rule IDs to disable.
+    ///   replace_secret_with: Optional placeholder to replace masked secret output.
     #[pyfunction]
-    #[pyo3(signature = (text, disable_rules=None))]
-    fn scan_text(text: &str, disable_rules: Option<Vec<String>>) -> PyResult<Vec<PyFinding>> {
+    #[pyo3(signature = (text, disable_rules=None, replace_secret_with=None))]
+    fn scan_text(
+        text: &str,
+        disable_rules: Option<Vec<String>>,
+        replace_secret_with: Option<String>,
+    ) -> PyResult<Vec<PyFinding>> {
         let mut cfg = Config::default();
         if let Some(disabled) = disable_rules {
             cfg.rules.disable = disabled;
@@ -202,16 +209,86 @@ mod python {
         let findings = scanner.scan_text(text, "<text>");
         Ok(findings
             .into_iter()
-            .map(|f| PyFinding {
-                rule_id: f.rule_id,
-                description: f.description,
-                severity: f.severity,
-                line_number: f.line_number,
-                line: f.line,
-                secret: f.secret,
-                tags: f.tags,
+            .map(|f| {
+                let secret = replace_secret_with.clone().unwrap_or(f.secret);
+                PyFinding {
+                    rule_id: f.rule_id,
+                    description: f.description,
+                    severity: f.severity,
+                    line_number: f.line_number,
+                    line: f.line,
+                    secret,
+                    secret_hash: f.secret_hash,
+                    tags: f.tags,
+                }
             })
             .collect())
+    }
+
+    /// Scan text for secrets and return a list of plain dict objects.
+    ///
+    /// This is useful for direct Pydantic validation without `from_attributes=True`.
+    ///
+    /// Arguments:
+    ///   text: The text to scan for secrets.
+    ///   disable_rules: Optional list of rule IDs to disable.
+    ///   replace_secret_with: Optional placeholder to replace masked secret output.
+    #[pyfunction]
+    #[pyo3(signature = (text, disable_rules=None, replace_secret_with=None))]
+    fn scan_text_dict(
+        py: Python<'_>,
+        text: &str,
+        disable_rules: Option<Vec<String>>,
+        replace_secret_with: Option<String>,
+    ) -> PyResult<Vec<Py<PyDict>>> {
+        let mut cfg = Config::default();
+        if let Some(disabled) = disable_rules {
+            cfg.rules.disable = disabled;
+        }
+        let rules = builtin_rules();
+        let scanner = Scanner::new(rules, u64::MAX, &cfg)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        let findings = scanner.scan_text(text, "<text>");
+
+        let mut out = Vec::with_capacity(findings.len());
+        for f in findings {
+            let secret = replace_secret_with.clone().unwrap_or(f.secret);
+            let d = PyDict::new(py);
+            d.set_item("rule_id", f.rule_id)?;
+            d.set_item("description", f.description)?;
+            d.set_item("severity", f.severity)?;
+            d.set_item("line_number", f.line_number)?;
+            d.set_item("line", f.line)?;
+            d.set_item("secret", secret)?;
+            d.set_item("secret_hash", f.secret_hash)?;
+            d.set_item("tags", f.tags)?;
+            out.push(d.unbind());
+        }
+        Ok(out)
+    }
+
+    /// Replace detected secrets in text and return sanitized text.
+    ///
+    /// Arguments:
+    ///   text: The input text to sanitize.
+    ///   disable_rules: Optional list of rule IDs to disable.
+    ///   replacement: Replacement token used for every detected secret.
+    #[pyfunction]
+    #[pyo3(signature = (text, disable_rules=None, replacement="[REDACTED_SECRET]"))]
+    fn replace_text(
+        text: &str,
+        disable_rules: Option<Vec<String>>,
+        replacement: &str,
+    ) -> PyResult<(String, bool)> {
+        let mut cfg = Config::default();
+        if let Some(disabled) = disable_rules {
+            cfg.rules.disable = disabled;
+        }
+        let rules = builtin_rules();
+        let scanner = Scanner::new(rules, u64::MAX, &cfg)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        let (sanitized, count) = scanner.replace_text_with_stats(text, replacement);
+        Ok((sanitized, count > 0))
     }
 
     /// Run the leakguard CLI. Exits the process with an appropriate exit code.
@@ -227,6 +304,8 @@ mod python {
     #[pymodule]
     fn leakguard(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(wrap_pyfunction!(scan_text, m)?)?;
+        m.add_function(wrap_pyfunction!(scan_text_dict, m)?)?;
+        m.add_function(wrap_pyfunction!(replace_text, m)?)?;
         m.add_function(wrap_pyfunction!(run_cli, m)?)?;
         m.add_class::<PyFinding>()?;
         Ok(())
