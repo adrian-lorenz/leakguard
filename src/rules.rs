@@ -73,6 +73,7 @@ pub fn builtin_rules() -> Vec<Rule> { vec![
     Rule { id: "together-ai-key",         description: "Together AI API Key",               pattern: r"(?i)TOGETHER[._-]?API[._-]?KEY\s*[=:]\s*([A-Za-z0-9]{64})", secret_group: 1, severity: Severity::Critical, tags: vec!["llm","together","ai"] },
     Rule { id: "perplexity-api-key",      description: "Perplexity AI API Key",             pattern: r"pplx-[A-Za-z0-9]{48}", secret_group: 0, severity: Severity::High, tags: vec!["llm","perplexity","ai"] },
     Rule { id: "groq-api-key",            description: "Groq API Key",                      pattern: r"gsk_[A-Za-z0-9]{52}", secret_group: 0, severity: Severity::High, tags: vec!["llm","groq","ai"] },
+    Rule { id: "xai-api-key",            description: "xAI / Grok API Key",                pattern: r"xai-[A-Za-z0-9]{32,}", secret_group: 0, severity: Severity::Critical, tags: vec!["llm","xai","grok","ai"] },
     Rule { id: "azure-openai-key",        description: "Azure OpenAI API Key",              pattern: r"(?i)(?:AZURE[._-]?OPENAI[._-]?(?:API[._-]?)?KEY)\s*[=:]\s*([a-f0-9]{32})", secret_group: 1, severity: Severity::Critical, tags: vec!["llm","azure","openai","ai"] },
     Rule { id: "stability-ai-key",        description: "Stability AI API Key",              pattern: r"sk-[A-Za-z0-9]{48}[^A-Za-z0-9]", secret_group: 0, severity: Severity::High, tags: vec!["llm","stability","ai"] },
 
@@ -236,6 +237,38 @@ pub fn builtin_rules() -> Vec<Rule> { vec![
     // ── HTTP Warnings ────────────────────────────────────────────────────────
     Rule { id: "http-insecure-url",    description: "Insecure HTTP URL (prefer HTTPS)",              pattern: r"http://[a-zA-Z0-9\-._~:/?#\[\]@!$&()*+,;=%]{4,}", secret_group: 0, severity: Severity::Warning,  tags: vec!["http","insecure"] },
     Rule { id: "http-auth-over-http",  description: "Credentials sent over plain HTTP",              pattern: r"(?i)http://[^:@\s]+:[^:@\s]+@[^\s]+",            secret_group: 0, severity: Severity::Critical, tags: vec!["http","insecure","credentials"] },
+
+    // ── Infrastructure / CI ──────────────────────────────────────────────────
+    Rule { id: "vault-service-token",      description: "HashiCorp Vault Service Token",      pattern: r"hvs\.[A-Za-z0-9_-]{24,}",                                                                                                                          secret_group: 0, severity: Severity::Critical, tags: vec!["vault","hashicorp","infra"] },
+    Rule { id: "vault-batch-token",        description: "HashiCorp Vault Batch Token",         pattern: r"hvb\.[A-Za-z0-9_-]{24,}",                                                                                                                          secret_group: 0, severity: Severity::Critical, tags: vec!["vault","hashicorp","infra"] },
+    Rule { id: "terraform-cloud-token",    description: "Terraform Cloud API Token",           pattern: r"TFC-[A-Za-z0-9]{14,}",                                                                                                                             secret_group: 0, severity: Severity::Critical, tags: vec!["terraform","hashicorp","infra"] },
+    Rule { id: "digitalocean-pat",         description: "DigitalOcean Personal Access Token",  pattern: r"dop_v1_[a-f0-9]{64}",                                                                                                                              secret_group: 0, severity: Severity::Critical, tags: vec!["digitalocean","cloud"] },
+    Rule { id: "circleci-token",           description: "CircleCI API Token",                  pattern: r"ccipat_[A-Za-z0-9]{40,}",                                                                                                                          secret_group: 0, severity: Severity::High,     tags: vec!["circleci","ci"] },
+
+    // ── Email ────────────────────────────────────────────────────────────────
+    Rule { id: "resend-api-key",           description: "Resend API Key",                      pattern: r"re_[A-Za-z0-9_-]{24,}",                                                                                                                            secret_group: 0, severity: Severity::High,     tags: vec!["resend","email"] },
+    Rule { id: "mailgun-api-key",          description: "Mailgun API Key",                     pattern: r"\bkey-[a-f0-9]{32}\b",                                                                                                                             secret_group: 0, severity: Severity::High,     tags: vec!["mailgun","email"] },
+    Rule { id: "postmark-server-token",    description: "Postmark Server API Token",           pattern: r"(?i)(?:POSTMARK[._-]?(?:SERVER[._-]?)?(?:API[._-]?)?TOKEN|X-Postmark-Server-Token)\s*[=:]\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", secret_group: 1, severity: Severity::High,     tags: vec!["postmark","email"] },
+
+    // ── Datenbank / BaaS ─────────────────────────────────────────────────────
+    Rule { id: "supabase-pat",             description: "Supabase Personal Access Token",      pattern: r"sbp_[a-f0-9]{40}",                                                                                                                                 secret_group: 0, severity: Severity::Critical, tags: vec!["supabase","database"] },
+    Rule { id: "supabase-service-role",    description: "Supabase Service Role Key (JWT)",     pattern: r"(?i)SUPABASE[._-]?(?:SERVICE[._-]?ROLE[._-]?)?KEY\s*[=:]\s*(eyJ[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{27,})",                    secret_group: 1, severity: Severity::Critical, tags: vec!["supabase","database","jwt"] },
+
+    // ── AI / Embeddings ──────────────────────────────────────────────────────
+    Rule { id: "pinecone-api-key",         description: "Pinecone API Key",                    pattern: r"pcsk_[A-Za-z0-9_]{40,}",                                                                                                                           secret_group: 0, severity: Severity::Critical, tags: vec!["pinecone","ai","embeddings"] },
+    Rule { id: "elevenlabs-api-key",       description: "ElevenLabs API Key",                  pattern: r"(?i)(?:ELEVENLABS[._-]?(?:API[._-]?)?KEY|XI_API_KEY)\s*[=:]\s*([a-f0-9]{32})",                                                                    secret_group: 1, severity: Severity::High,     tags: vec!["elevenlabs","ai","voice"] },
+
+    // ── Communication ────────────────────────────────────────────────────────
+    Rule { id: "slack-signing-secret",     description: "Slack Signing Secret",                pattern: r"(?i)(?:SLACK_SIGNING_SECRET|slack[._-]?signing[._-]?secret)\s*[=:]\s*([a-f0-9]{32})",                                                              secret_group: 1, severity: Severity::High,     tags: vec!["slack","communication"] },
+    Rule { id: "slack-app-token",          description: "Slack App-Level Token",               pattern: r"xapp-[0-9]-[A-Z0-9]+-[0-9]+-[a-f0-9]{64}",                                                                                                        secret_group: 0, severity: Severity::High,     tags: vec!["slack","communication"] },
+    Rule { id: "twilio-auth-token",        description: "Twilio Auth Token",                   pattern: r"(?i)TWILIO[._-]?AUTH[._-]?TOKEN\s*[=:]\s*([a-f0-9]{32})",                                                                                         secret_group: 1, severity: Severity::Critical, tags: vec!["twilio","communication"] },
+    Rule { id: "discord-bot-token",        description: "Discord Bot Token",                   pattern: r"(?i)(?:discord[._-]?(?:bot[._-]?)?token|DISCORD_TOKEN)\s*[=:]\s*([A-Za-z0-9_-]{24,26}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,})",                   secret_group: 1, severity: Severity::High,     tags: vec!["discord","communication"] },
+    Rule { id: "telegram-bot-token",       description: "Telegram Bot Token",                  pattern: r"[0-9]{8,12}:[A-Za-z0-9_-]{35}",                                                                                                                   secret_group: 0, severity: Severity::High,     tags: vec!["telegram","communication"] },
+    Rule { id: "notion-integration-token", description: "Notion Integration Token",            pattern: r"secret_[A-Za-z0-9]{43}",                                                                                                                           secret_group: 0, severity: Severity::High,     tags: vec!["notion","communication"] },
+    Rule { id: "notion-oauth-token",       description: "Notion OAuth Access Token",           pattern: r"ntn_[A-Za-z0-9]{40,}",                                                                                                                             secret_group: 0, severity: Severity::High,     tags: vec!["notion","communication"] },
+
+    // ── GCP ──────────────────────────────────────────────────────────────────
+    Rule { id: "gcp-service-account",      description: "GCP Service Account JSON",            pattern: r#""type"\s*:\s*"service_account""#,                                                                                                                  secret_group: 0, severity: Severity::Critical, tags: vec!["gcp","google","cloud"] },
 ]}
 
 #[cfg(test)]
