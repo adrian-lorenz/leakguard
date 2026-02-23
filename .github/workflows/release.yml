@@ -25,8 +25,8 @@ jobs:
           echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
           echo "Release tag: v${VERSION}"
 
-  # ── Linux & Windows stable targets ──────────────────────────────────────────
-  build-linux-windows:
+  # ── Linux stable targets ─────────────────────────────────────────────────────
+  build-linux:
     name: Build ${{ matrix.name }}
     needs: prepare
     runs-on: ubuntu-latest
@@ -36,13 +36,8 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             name: linux-amd64
-            ext: ""
           - target: aarch64-unknown-linux-musl
             name: linux-arm64
-            ext: ""
-          - target: x86_64-pc-windows-gnu
-            name: windows-amd64
-            ext: .exe
 
     steps:
       - uses: actions/checkout@v4
@@ -67,15 +62,42 @@ jobs:
         run: cross build --release --target ${{ matrix.target }}
 
       - name: Stage binary
-        run: |
-          cp target/${{ matrix.target }}/release/leakguard${{ matrix.ext }} \
-             leakguard-${{ matrix.name }}${{ matrix.ext }}
+        run: cp target/${{ matrix.target }}/release/leakguard leakguard-${{ matrix.name }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: leakguard-${{ matrix.name }}
-          path: leakguard-${{ matrix.name }}${{ matrix.ext }}
+          path: leakguard-${{ matrix.name }}
+
+  # ── Windows (native MSVC runner) ─────────────────────────────────────────────
+  build-windows:
+    name: Build windows-amd64
+    needs: prepare
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Stage binary
+        run: cp target/x86_64-pc-windows-msvc/release/leakguard.exe leakguard-windows-amd64.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: leakguard-windows-amd64
+          path: leakguard-windows-amd64.exe
 
   # ── macOS ARM64 ───────────────────────────────────────────────────────────────
   build-macos:
@@ -163,7 +185,7 @@ jobs:
   # ── Create GitHub Release ────────────────────────────────────────────────────
   release:
     name: Create Release
-    needs: [prepare, build-linux-windows, build-macos]
+    needs: [prepare, build-linux, build-windows, build-macos]
 
     runs-on: ubuntu-latest
     permissions:
