@@ -1,0 +1,48 @@
+name: Secret Scan
+
+on:
+  workflow_dispatch:
+
+
+jobs:
+  leakguard:
+    name: leakguard secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install leakguard
+        run: |
+          if curl -sSfL \
+            https://github.com/adrian-lorenz/leakguard/releases/latest/download/leakguard-linux-amd64 \
+            -o /usr/local/bin/leakguard 2>/dev/null; then
+            chmod +x /usr/local/bin/leakguard
+            echo "leakguard installed from release"
+          else
+            echo "No release found — building from source"
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+            source "$HOME/.cargo/env"
+            cargo build --release
+            cp target/release/leakguard /usr/local/bin/leakguard
+          fi
+
+      - name: Run scan
+        run: leakguard check --format sarif --github-summary > results.sarif
+        continue-on-error: true
+
+      - name: Validate SARIF
+        run: |
+          if [ ! -s results.sarif ]; then
+            echo "results.sarif is empty or missing — skipping upload"
+            exit 0
+          fi
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: results.sarif

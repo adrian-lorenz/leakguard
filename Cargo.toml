@@ -1,0 +1,31 @@
+[package]
+name = "leakguard"
+version = "0.5.2"
+edition = "2024"
+description = "leakguard — fast secret scanner for your codebase"
+
+[lib]
+name = "leakguard"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "leakguard"
+path = "src/main.rs"
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module", "pyo3/abi3-py38"]
+
+[dependencies]
+pyo3 = { version = "0.28.2", optional = true }
+regex = "1.12"
+clap = { version = "4.5", features = ["derive"] }
+walkdir = "2.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+colored = "3.1.1"
+anyhow = "1.0"
+toml = "1.0.3"
+
+[dev-dependencies]
+tempfile = "3.10"
