@@ -20,6 +20,11 @@ classifiers = [
     "Intended Audience :: Developers",
 ]
 
+[project.urls]
+Homepage = "https://github.com/adrian-lorenz/leakguard"
+Repository = "https://github.com/adrian-lorenz/leakguard"
+Issues = "https://github.com/adrian-lorenz/leakguard/issues"
+
 [project.scripts]
 leakguard = "leakguard:run_cli"
 
