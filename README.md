@@ -1,4 +1,10 @@
 # leakguard
+[![PyPI](https://img.shields.io/pypi/v/leakguard)](https://pypi.org/project/leakguard/)
+[![Python](https://img.shields.io/pypi/pyversions/leakguard)](https://pypi.org/project/leakguard/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/adrian-lorenz/leakguard/blob/main/LICENSE)
+[![Release](https://img.shields.io/github/actions/workflow/status/adrian-lorenz/leakguard/release.yml?branch=main&label=release)](https://github.com/adrian-lorenz/leakguard/actions/workflows/release.yml)
+[![Scan](https://img.shields.io/github/actions/workflow/status/adrian-lorenz/leakguard/scan.yml?branch=main&label=scan)](https://github.com/adrian-lorenz/leakguard/actions/workflows/scan.yml)
+
 ![leakguard banner](img.png)
 
 > Fast, lightweight secret scanner for codebases (Rust CLI + Python package).
