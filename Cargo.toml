@@ -1,6 +1,6 @@
 [package]
 name = "leakguard"
-version = "1.0.3"
+version = "1.0.4"
 edition = "2024"
 description = "leakguard — fast secret scanner for your codebase"
 
